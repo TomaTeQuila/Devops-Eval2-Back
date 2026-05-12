@@ -55,23 +55,43 @@ jobs:
             # Login a Docker Hub en la instancia EC2
             echo "${{ secrets.DOCKERHUB_TOKEN }}" | docker login -u "${{ secrets.DOCKERHUB_USERNAME }}" --password-stdin
 
-            # Detener y eliminar contenedor anterior si existe
+            # Crear red interna si no existe
+            docker network create innovatech_net || true
+
+            # Levantar MySQL si no está corriendo
+            if [ ! "$(docker ps -q -f name=innovatech_db)" ]; then
+              docker rm innovatech_db || true
+              docker run -d \
+                --name innovatech_db \
+                --network innovatech_net \
+                --restart unless-stopped \
+                -e MYSQL_ROOT_PASSWORD=${{ secrets.DB_ROOT_PASSWORD }} \
+                -e MYSQL_DATABASE=${{ secrets.DB_NAME }} \
+                -e MYSQL_USER=${{ secrets.DB_USER }} \
+                -e MYSQL_PASSWORD=${{ secrets.DB_PASSWORD }} \
+                mysql:8.0
+              echo "Esperando que MySQL inicie..."
+              sleep 20
+            fi
+
+            # Detener y eliminar contenedor backend anterior
             docker stop innovatech_backend || true
             docker rm innovatech_backend || true
 
             # Descargar la imagen más reciente
             docker pull ${{ env.IMAGE_NAME }}:latest
 
-            # Levantar el nuevo contenedor conectado a la red de la BD
+            # Levantar backend en la misma red que MySQL
             docker run -d \
               --name innovatech_backend \
+              --network innovatech_net \
               --restart unless-stopped \
               -p 3000:3000 \
               -e PORT=3000 \
-              -e DB_HOST="${{ secrets.DB_HOST }}" \
-              -e DB_USER="${{ secrets.DB_USER }}" \
-              -e DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
-              -e DB_NAME="${{ secrets.DB_NAME }}" \
+              -e DB_HOST=innovatech_db \
+              -e DB_USER=${{ secrets.DB_USER }} \
+              -e DB_PASSWORD=${{ secrets.DB_PASSWORD }} \
+              -e DB_NAME=${{ secrets.DB_NAME }} \
               -e DB_PORT=3306 \
               ${{ env.IMAGE_NAME }}:latest
 
