@@ -28,7 +28,7 @@ jobs:
         uses: docker/setup-buildx-action@v3
 
       - name: Build y Push imagen
-        uses: docker/build-push-action@v5
+        uses: docker/build-push-action@v6
         with:
           context: .
           push: true
@@ -59,8 +59,8 @@ jobs:
             docker stop innovatech_backend || true
             docker rm innovatech_backend || true
 
-            # Descargar la imagen más reciente
-            docker pull ${{ env.IMAGE_NAME }}:latest
+            # Descargar imagen por SHA (inmutable, evita race conditions)
+            docker pull ${{ env.IMAGE_NAME }}:${{ github.sha }}
 
             # Levantar el nuevo contenedor conectado a la red de la BD
             docker run -d \
@@ -73,6 +73,9 @@ jobs:
               -e DB_PASSWORD="${{ secrets.DB_PASSWORD }}" \
               -e DB_NAME="${{ secrets.DB_NAME }}" \
               -e DB_PORT=3306 \
-              ${{ env.IMAGE_NAME }}:latest
+              ${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+            # Limpiar imágenes antiguas para liberar espacio en disco
+            docker image prune -f
 
             echo "✓ Backend desplegado correctamente"
